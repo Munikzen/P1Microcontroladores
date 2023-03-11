@@ -22,15 +22,56 @@ addition:
         push    {r7, lr}
         sub     sp, sp, #8
         add     r7, sp,
-        str     r0, [r7, #4] @ backs up counter
+        str     r0, [r7, #4] @ backs up counter argument
         # Function body
-        
+        ldr     r0, [r7, #4] @ r0 <- counter
+        adds    r0, r0, #1 
+        str     r0, [r7, #4] @ counter++;
+        ldr     r0, [r7, #4]
+        mov     r1, #31 @ if counter < 31
+        cmp     r0, r1
+        bgt     reset @ counter = 0;
+
+        ldr     r1, =GPIOA_ODR
+        ldr     r0, [r7, #4]
+        str     r0, [r1]
+        mov     r0, #500
+        bl      delay
+        ldr     r0, [r7, #4]
+
         # Epilogue
         adds    r7, r7, #8
         mov     sp, r7
         pop     {r7, lr}
         bx      lr
+
 subtraction:
+        # Prologue
+        push    {r7, lr}
+        sub     sp, sp, #8
+        add     r7, sp,
+        str     r0, [r7, #4] @ backs up counter argument
+        # Function body
+        ldr     r0, [r7, #4] @ r0 <- counter
+        subs    r0, r0, #1
+        str     r0, [r7, #4] @ counter--;
+        ldr     r0, [r7, #4]
+        mov     r1, #0 @ if counter < 0
+        cmp     r0, r1
+        ble     reset @ counter = 0;
+
+        ldr     r1, =GPIOA_ODR
+        ldr     r0, [r7, #4]
+        str     r0, [r1]
+        mov     r0, #500
+        bl      delay
+        ldr     r0, [r7, #4]
+
+        # Epilogue
+        adds    r7, r7, #8
+        mov     sp, r7
+        pop     {r7, lr}
+        bx      lr
 
 reset:
         # Prologue
@@ -118,7 +159,7 @@ setup:
         mov     r0, #0
         str     r0, [r7]
 loop:   
-        # if(2 buttons pressed)
+        # if(2 buttons are pressed)
         ldr     r0, =GPIOA_IDR
         ldr     r1, [r0]
         and     r1, 0x300
@@ -140,9 +181,17 @@ loop:
 
         ldr     r0, [r7]
         bl      addition
+        str     r0, [r7]
 
-        # else if(subtraction button is pressed)
+.L2:    # else if(subtraction button is pressed)
+        ldr     r0, =GPIOA_IDR
+        ldr     r0, [r0]
         and     r0, 0x200
+        cmp     r0, 0x200
+        bne     .L3
 
-        bge     .L1
+        ldr     r0, [r7]
+        bl      subtraction
+        str     r0, [r7]
+.L3:
         b       loop
