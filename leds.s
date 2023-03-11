@@ -1,5 +1,5 @@
 /* This program turns on and off 5 leds embedded in a protoboard through. The leds are 
- * connected to the following pins: PB1 PB2 PB5 PB6 PB7. This pins works as a GPIO,
+ * connected to the following pins: PA0, PA1, PA2, PA3, PA4. This pins works as a GPIO,
  * then they must be configured at assembly level, through the following registers:
  * 1) RCC register,
  * 2) GPIOC_CRL register, 
@@ -17,47 +17,132 @@
 
 .include "nvic.inc"
 
+addition:
+        # Prologue
+        push    {r7, lr}
+        sub     sp, sp, #8
+        add     r7, sp,
+        str     r0, [r7, #4] @ backs up counter
+        # Function body
+        
+        # Epilogue
+        adds    r7, r7, #8
+        mov     sp, r7
+        pop     {r7, lr}
+        bx      lr
+subtraction:
+
+reset:
+        # Prologue
+        push    {r7, lr}
+        sub     sp, sp, #8
+        add     r7, sp,
+        str     r0, [r7, #4] @ backs up counter
+        # Function body
+        mov     r0, #0
+        str     r0, [r7, #4] @ resets counter to 0
+        ldr     r0, =GPIOA_ODR
+        ldr     r3, [r7, #4]
+        str     r3, [r0] 
+        ldr     r0, [r7, #4]
+        # Epilogue
+        adds    r7, r7, #8
+        mov     sp, r7
+        pop     {r7, lr}
+        bx      lr
+
+delay:
+        # Prologue
+        push    {r7} @ backs r7 up
+        sub     sp, sp, #28 @ reserves a 32-byte function frame
+        add     r7, sp, #0 @ updates r7
+        str     r0, [r7] @ backs ms up
+        # Function body
+        mov     r0, #255 @ ticks = 255, adjust to achieve 1 ms delay
+        str     r0, [r7, #16]
+        # for (i = 0; i < ms; i++)
+        mov     r0, #0 @ i = 0;
+        str     r0, [r7, #8]
+        b       F3
+        # for (j = 0; j < tick; j++)
+F4:     mov     r0, #0 @ j = 0;
+        str     r0, [r7, #12]
+        b       F5
+F6:     ldr     r0, [r7, #12] @ j++;
+        add     r0, #1
+        str     r0, [r7, #12]
+F5:     ldr     r0, [r7, #12] @ j < ticks;
+        ldr     r1, [r7, #16]
+        cmp     r0, r1
+        blt     F6
+        ldr     r0, [r7, #8] @ i++;
+        add     r0, #1
+        str     r0, [r7, #8]
+F3:     ldr     r0, [r7, #8] @ i < ms
+        ldr     r1, [r7]
+        cmp     r0, r1
+        blt     F4
+        # Epilogue
+        adds    r7, r7, #28
+        mov     sp, r7
+        pop     {r7}
+        bx      lr
 
 setup:
         # Prologue
-        push {r7}
-	sub	sp, sp, #28
+        push    {r7, lr}
+	sub	sp, sp, #8
 	add	r7, sp, #0
 
         # enabling clock in port B
         ldr     r0, =RCC_APB2ENR @ move 0x40021018 to r0
-        mov     r3, 0x8 @ loads 8 in r1 to enable clock in port B (IOPC bit)
-        str     r3, [r0] @ M[RCC_APB2ENR] gets 8
+        mov     r3, 0x4 @ loads 16 in r1 to enable clock in port A (IOPC bit)
+        str     r3, [r0] @ M[RCC_APB2ENR] gets 4
 
-        # set pins 1-2-5-6-7 as digital output
-        ldr     r0, =GPIOB_CRL @ moves address of GPIOB_CRL register to r0
-        ldr     r3, =0x33344334 @ PB1, PB2, PB5, PB6, PB7: output push-pull, max speed 50 MHz
-        str     r3, [r0] @ M[GPIOB_CRL] gets 0x33344334
+        # set pin 0 to 4 as digital output
+        ldr     r0, =GPIOA_CRL @ moves address of GPIOA_CRL register to r0
+        ldr     r3, =0x44433333 @ PA0, PA1, PA2, PA3, PA4: output push-pull, max speed 50 MHz
+        str     r3, [r0] @ M[GPIOA_CRL] gets 0x44433333
 
         # set pins 8-9 as digital input
-        ldr     r0, =GPIOB_CRH @ moves address of GPIOB_CRH register to r0
+        ldr     r0, =GPIOA_CRH @ moves address of GPIOA_CRH register to r0
         ldr     r3, =0x44444488 @ : input pull-down
         str     r3, [r0] @ M[GPIOB_CRH] gets 0x44444488
 
         # set led status initial value
-        ldr     r0, =GPIOB_ODR @ moves address of GPIOB_ODR register to r0
-        mov     r1, 0x0
-        str     r1, [r7, #12] @ sets num variable at 0
-        str     r1, [r7, #16] @ sets bit[0] at 0
-        str     r1, [r7, #20] @ sets bit[1] at 0
-        str     r1, [r7, #24] @ sets bit[2] at 0
-        str     r1, [r7, #28] @ sets bit[3] at 0
-        str     r1, [r7, #32] @ sets bit[4] at 0
-loop:   
-        mov     r2, 0x0
-        b .F1
+        ldr     r0, =GPIOA_ODR @ moves address of GPIOA_ODR register to r0
+        mov     r3, #0
+        str     r3, [r0]
 
-.L1:    
+        # counter = 0;
+        mov     r0, #0
+        str     r0, [r7]
+loop:   
+        # if(2 buttons pressed)
+        ldr     r0, =GPIOA_IDR
+        ldr     r1, [r0]
+        and     r1, 0x300
+        cmp     r1, 0x300
+        bne     .L1
+
+        bl      reset
+        str     r0, [r7]
+        mov     r0, #500
+        bl      delay
 
         
-        add     r2, #0x1
+.L1:    # else if(addition button is pressed)
+        ldr     r0, =GPIOA_IDR
+        ldr     r0, [r0]
+        and     r0, 0x100
+        cmp     r0, 0x100
+        bne     .L2
 
-.F1     ldr     r2, [r7,#12]
-        cmp     r2, #5
+        ldr     r0, [r7]
+        bl      addition
+
+        # else if(subtraction button is pressed)
+        and     r0, 0x200
+
         bge     .L1
         b       loop
